@@ -554,8 +554,7 @@
    CONFIG — read from config.js (window.GK_CONFIG)
 ================================================================ */
 const CFG          = window.GK_CONFIG || {};
-const METABASE_URL = (CFG.METABASE_URL || '').replace(/\/$/, '');
-const API_KEY      = CFG.METABASE_API_KEY || CFG.API_KEY || '';
+// API keys live server-side; browser only uses the proxy endpoints.
 
 const CARD_CHECKOUT = 5824;
 const CARD_PAYMENT  = 5823;
@@ -648,11 +647,6 @@ let chatContext   = null; // { mid, name, rows }
 ================================================================ */
 document.addEventListener('DOMContentLoaded', () => {
   applyStoredTheme();
-  if (!API_KEY) {
-    showAlert('radarAlert', 'METABASE_API_KEY not set in config.js — edit the file and reload.', 'error');
-    $('#dataLoadStatus').text('Config missing');
-    return;
-  }
   loadAllData();
   loadHeatmap();
 });
@@ -732,13 +726,13 @@ function unpivot(wideRow, source) {
 }
 
 /* ================================================================
-   METABASE API
+   METABASE API  (proxied through /metabase/* — no key in browser)
 ================================================================ */
-function mbHeaders() {
-  return { 'Content-Type': 'application/json', 'X-API-KEY': API_KEY, 'Authorization': `Bearer ${API_KEY}` };
-}
 async function mbFetch(path, opts = {}) {
-  const resp = await fetch(METABASE_URL + path, { ...opts, headers: { ...mbHeaders(), ...(opts.headers || {}) } });
+  const resp = await fetch('/metabase' + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  });
   if (!resp.ok) { const t = await resp.text(); throw new Error(`HTTP ${resp.status}: ${t.substring(0, 300)}`); }
   return resp.json();
 }
@@ -1171,12 +1165,6 @@ async function sendChat() {
 
   appendChat('user', input);
 
-  const apiKey = CFG.ANTHROPIC_API_KEY || '';
-  if (!apiKey && !window.location.hostname.includes('localhost') && window.location.protocol !== 'file:') {
-    appendChat('assistant', 'AI Insights requires an Anthropic API key configured in config.js and server.py running on EC2. Set ANTHROPIC_API_KEY in your .env file.');
-    return;
-  }
-
   const ctx = chatContext;
   const systemPrompt = ctx
     ? `You are a CSM analyst at GoKwik helping analyze merchant product adoption.
@@ -1194,7 +1182,7 @@ Be concise. Focus on upsell opportunities and actionable insights.`
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ system: systemPrompt, message: input, api_key: apiKey })
+      body: JSON.stringify({ system: systemPrompt, message: input })
     });
     const json = await resp.json();
     updateLastChat(json.content || json.error || 'No response');

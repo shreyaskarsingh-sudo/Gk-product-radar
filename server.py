@@ -42,6 +42,11 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             return
 
+        # Metabase proxy — GET (e.g. /metabase/api/database)
+        if self.path.startswith('/metabase/'):
+            self._proxy_metabase('GET', None)
+            return
+
         # Block sensitive files — check every path segment
         parts = [p for p in self.path.lstrip('/').split('/') if p]
         name = parts[0] if parts else ''
@@ -60,6 +65,13 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_HEAD()
 
     def do_POST(self):
+        # Metabase proxy — POST (e.g. /metabase/api/card/5824/query)
+        if self.path.startswith('/metabase/'):
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length) if length else b'{}'
+            self._proxy_metabase('POST', body)
+            return
+
         if self.path != '/api/chat':
             self.send_error(404)
             return
@@ -67,9 +79,9 @@ class Handler(SimpleHTTPRequestHandler):
         length = int(self.headers.get('Content-Length', 0))
         body   = json.loads(self.rfile.read(length))
 
-        api_key = body.get('api_key') or os.environ.get('ANTHROPIC_API_KEY', '')
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '')
         if not api_key:
-            self._json(400, {'error': 'ANTHROPIC_API_KEY not configured'})
+            self._json(400, {'error': 'ANTHROPIC_API_KEY not configured on server'})
             return
 
         payload = json.dumps({
@@ -97,6 +109,40 @@ class Handler(SimpleHTTPRequestHandler):
         except urllib.error.HTTPError as e:
             err = e.read().decode()
             self._json(e.code, {'error': err})
+
+    def _proxy_metabase(self, method, body):
+        """Forward /metabase/<path> to the real Metabase, injecting the API key."""
+        mb_url = os.environ.get('METABASE_URL', '').rstrip('/')
+        api_key = os.environ.get('METABASE_API_KEY', '')
+        if not mb_url or not api_key:
+            self._json(503, {'error': 'Metabase not configured on server (METABASE_URL / METABASE_API_KEY missing)'})
+            return
+
+        # Strip /metabase prefix to get the real Metabase path
+        path = self.path[len('/metabase'):]
+        url  = mb_url + path
+
+        headers = {
+            'Content-Type': 'application/json',
+            'X-API-KEY':    api_key,
+            'Authorization': f'Bearer {api_key}',
+        }
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req) as resp:
+                data = resp.read()
+                self.send_response(resp.status)
+                self.send_header('Content-Type', resp.headers.get('Content-Type', 'application/json'))
+                self.send_header('Content-Length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+        except urllib.error.HTTPError as e:
+            data = e.read()
+            self.send_response(e.code)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
 
     def _json(self, code, obj):
         body = json.dumps(obj).encode()
