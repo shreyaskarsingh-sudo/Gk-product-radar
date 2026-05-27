@@ -12,6 +12,26 @@ import urllib.request
 import urllib.error
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
+
+def _load_dotenv():
+    """Load .env from the same directory as this script into os.environ."""
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    try:
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, _, val = line.partition('=')
+                # Strip optional quotes around the value
+                val = val.strip().strip('"').strip("'")
+                os.environ.setdefault(key.strip(), val)
+        print(f'Loaded env from {env_path}')
+    except FileNotFoundError:
+        print(f'No .env found at {env_path}, relying on system env vars')
+
+_load_dotenv()
+
 PORT = int(os.environ.get('PORT', 8080))
 
 

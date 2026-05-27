@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GoKwik — Merchant Product Radar</title>
-  <script src="config.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -553,8 +552,7 @@
 /* ================================================================
    CONFIG — read from config.js (window.GK_CONFIG)
 ================================================================ */
-const CFG          = window.GK_CONFIG || {};
-// API keys live server-side; browser only uses the proxy endpoints.
+// All config & API keys live server-side (.env). Browser uses proxy endpoints only.
 
 const CARD_CHECKOUT = 5824;
 const CARD_PAYMENT  = 5823;
