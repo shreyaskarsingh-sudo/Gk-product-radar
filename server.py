@@ -25,8 +25,8 @@ class DualStackServer(HTTPServer):
 
 
 BLOCKED = {
-    '.env', 'config.js', '.git', '.gitignore',
-    '.env.example', 'setup.sh', 'CLAUDE.md', 'DEPLOY.md',
+    '.env', '.env.example', '.git', '.gitignore',
+    'setup.sh', 'CLAUDE.md', 'DEPLOY.md',
 }
 
 
