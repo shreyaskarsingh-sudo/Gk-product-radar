@@ -24,9 +24,40 @@ class DualStackServer(HTTPServer):
         super().server_bind()
 
 
+BLOCKED = {
+    '.env', 'config.js', '.git', '.gitignore',
+    '.env.example', 'setup.sh', 'CLAUDE.md', 'DEPLOY.md',
+}
+
+
 class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print(fmt % args)
+
+    def do_GET(self):
+        # Redirect bare root to the HTML app
+        if self.path in ('/', ''):
+            self.send_response(302)
+            self.send_header('Location', '/merchant-product-radar.html')
+            self.end_headers()
+            return
+
+        # Block sensitive files — check every path segment
+        parts = [p for p in self.path.lstrip('/').split('/') if p]
+        name = parts[0] if parts else ''
+        if name in BLOCKED or name.startswith('.'):
+            self.send_error(403, 'Forbidden')
+            return
+
+        super().do_GET()
+
+    def do_HEAD(self):
+        parts = [p for p in self.path.lstrip('/').split('/') if p]
+        name = parts[0] if parts else ''
+        if name in BLOCKED or name.startswith('.'):
+            self.send_error(403, 'Forbidden')
+            return
+        super().do_HEAD()
 
     def do_POST(self):
         if self.path != '/api/chat':
