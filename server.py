@@ -55,12 +55,9 @@ class Handler(SimpleHTTPRequestHandler):
         print(fmt % args)
 
     def do_GET(self):
-        # Redirect bare root to the HTML app
+        # Serve the app directly at / so the URL stays clean
         if self.path in ('/', ''):
-            self.send_response(302)
-            self.send_header('Location', '/merchant-product-radar.html')
-            self.end_headers()
-            return
+            self.path = '/merchant-product-radar.html'
 
         # Metabase proxy — GET (e.g. /metabase/api/database)
         if self.path.startswith('/metabase/'):
