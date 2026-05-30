@@ -7,6 +7,8 @@ Usage: python3 server.py
 import json
 import os
 import socket
+import time
+import threading
 import http.server
 import urllib.request
 import urllib.error
@@ -32,7 +34,70 @@ def _load_dotenv():
 
 _load_dotenv()
 
-PORT = int(os.environ.get('PORT', 8080))
+PORT      = int(os.environ.get('PORT', 8080))
+CACHE_TTL = int(os.environ.get('CACHE_TTL_SECONDS', 43200))  # default: 12 hours (twice a day)
+
+# Paths to pre-warm at startup (the two wide card exports the dashboard needs).
+# Add CARD_HEATMAP (5666) here if you want that pre-warmed too.
+WARM_PATHS = [
+    '/api/card/5824/query/json',  # Checkout features
+    '/api/card/5823/query/json',  # Payment features
+]
+
+_cache      = {}   # path → (fetched_at, bytes, content_type)
+_cache_lock = threading.Lock()
+
+
+def _cache_get(path):
+    with _cache_lock:
+        entry = _cache.get(path)
+    if entry and (time.time() - entry[0]) < CACHE_TTL:
+        return entry[1], entry[2]
+    return None, None
+
+
+def _cache_set(path, data, content_type):
+    with _cache_lock:
+        _cache[path] = (time.time(), data, content_type)
+
+
+def _mb_fetch(path):
+    """Directly fetch a Metabase GET path — used by the background warmer."""
+    mb_url  = os.environ.get('METABASE_URL', '').rstrip('/')
+    api_key = os.environ.get('METABASE_API_KEY', '')
+    if not mb_url or not api_key:
+        raise RuntimeError('METABASE_URL / METABASE_API_KEY not set')
+    req = urllib.request.Request(
+        mb_url + path,
+        headers={
+            'Content-Type': 'application/json',
+            'X-API-KEY':    api_key,
+            'Authorization': f'Bearer {api_key}',
+        },
+        method='GET'
+    )
+    with urllib.request.urlopen(req) as resp:
+        return resp.read(), resp.headers.get('Content-Type', 'application/json')
+
+
+def _warm_once():
+    """Fetch every WARM_PATH into the cache (runs in the background thread)."""
+    for path in WARM_PATHS:
+        try:
+            data, ct = _mb_fetch(path)
+            _cache_set(path, data, ct)
+            print(f'[cache warm] {path} — {len(data) // 1024} KB ready')
+        except Exception as exc:
+            print(f'[cache warm] FAILED {path}: {exc}')
+
+
+def _warmer_loop():
+    """Background daemon: warm at startup, then refresh 60 s before TTL expires."""
+    _warm_once()
+    while True:
+        time.sleep(max(CACHE_TTL - 60, 60))
+        print('[cache warm] refreshing before TTL expiry…')
+        _warm_once()
 
 
 class DualStackServer(HTTPServer):
@@ -128,17 +193,38 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(e.code, {'error': err})
 
     def _proxy_metabase(self, method, body):
-        """Forward /metabase/<path> to the real Metabase, injecting the API key."""
-        mb_url = os.environ.get('METABASE_URL', '').rstrip('/')
+        """Forward /metabase/<path> to the real Metabase, injecting the API key.
+
+        GET requests are cached in memory for CACHE_TTL seconds so repeated
+        dashboard loads skip the Metabase round-trip entirely.
+        """
+        mb_url  = os.environ.get('METABASE_URL', '').rstrip('/')
         api_key = os.environ.get('METABASE_API_KEY', '')
         if not mb_url or not api_key:
             self._json(503, {'error': 'Metabase not configured on server (METABASE_URL / METABASE_API_KEY missing)'})
             return
 
-        # Strip /metabase prefix to get the real Metabase path
         path = self.path[len('/metabase'):]
-        url  = mb_url + path
 
+        # Serve from cache for GET requests (card export endpoints).
+        # ?nocache=1 (sent by the Refresh button) bypasses and refreshes the cache.
+        force_refresh = 'nocache=1' in path
+        cache_key     = path.split('?')[0]  # cache by path only, ignore query string
+
+        if method == 'GET' and not force_refresh:
+            cached_data, cached_ct = _cache_get(cache_key)
+            if cached_data is not None:
+                print(f'[cache hit] {cache_key}')
+                self.send_response(200)
+                self.send_header('Content-Type', cached_ct)
+                self.send_header('Content-Length', str(len(cached_data)))
+                self.end_headers()
+                self.wfile.write(cached_data)
+                return
+
+        # Strip nocache param before forwarding to Metabase
+        clean_path = cache_key
+        url = mb_url + clean_path
         headers = {
             'Content-Type': 'application/json',
             'X-API-KEY':    api_key,
@@ -148,8 +234,12 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             with urllib.request.urlopen(req) as resp:
                 data = resp.read()
+                ct   = resp.headers.get('Content-Type', 'application/json')
+                if method == 'GET':
+                    _cache_set(cache_key, data, ct)
+                    print(f'[cache set] {cache_key} ({len(data)} bytes, TTL {CACHE_TTL}s)')
                 self.send_response(resp.status)
-                self.send_header('Content-Type', resp.headers.get('Content-Type', 'application/json'))
+                self.send_header('Content-Type', ct)
                 self.send_header('Content-Length', str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -185,4 +275,5 @@ if __name__ == '__main__':
     except OSError:
         srv = HTTPServer(('0.0.0.0', PORT), Handler)
     print(f'Serving on http://localhost:{PORT}')
+    threading.Thread(target=_warmer_loop, daemon=True, name='cache-warmer').start()
     srv.serve_forever()
