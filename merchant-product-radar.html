@@ -700,12 +700,20 @@ async function loadAllData(forceRefresh = false) {
 }
 
 async function fetchCard(cardId, forceRefresh = false) {
-  // Use the JSON export endpoint — no display-row-limit, returns all rows as [{col: val}, ...]
-  // Pass ?nocache=1 on manual refresh so the server bypasses its in-memory cache.
+  // constraints: null tells Metabase to remove the display row-limit cap.
+  // ?nocache=1 on manual refresh bypasses the server-side in-memory cache.
   const qs = forceRefresh ? '?nocache=1' : '';
-  const result = await mbFetch(`/api/card/${cardId}/query/json${qs}`, { method: 'GET' });
-  if (!Array.isArray(result)) throw new Error(result?.error || 'Unexpected response from Metabase export');
-  return result;
+  const result = await mbFetch(`/api/card/${cardId}/query${qs}`, {
+    method: 'POST',
+    body: JSON.stringify({ constraints: null }),
+  });
+  if (result.error) throw new Error(result.error);
+  const cols = (result.data?.cols || []).map(c => c.name);
+  return (result.data?.rows || []).map(row => {
+    const obj = {};
+    cols.forEach((col, i) => { obj[col] = row[i]; });
+    return obj;
+  });
 }
 
 function unpivot(wideRow, source) {
