@@ -211,6 +211,18 @@
     .ps-item.ps-item-on { border-color: rgba(16,185,129,.35); background: rgba(16,185,129,.05); }
     .ps-item.ps-item-off { border-color: rgba(239,68,68,.3); background: rgba(239,68,68,.04); }
 
+    /* PORTFOLIO FILTERS */
+    .pf-row { display:flex; gap:14px; padding:14px 20px; background:var(--filter-bg); border-bottom:1px solid var(--border); flex-wrap:wrap; align-items:flex-end; }
+    .pf-col { display:flex; flex-direction:column; gap:5px; min-width:130px; }
+    .pf-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.7px; color:var(--text-2); }
+    .pf-select { appearance:none; -webkit-appearance:none; background:var(--bg-card); border:1px solid var(--border); border-radius:7px; color:var(--text); font-family:inherit; font-size:12px; font-weight:500; height:34px; padding:0 28px 0 10px; cursor:pointer; transition:border-color .15s; outline:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2364748B'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 10px center; }
+    .pf-select:hover, .pf-select:focus { border-color:var(--accent); }
+
+    /* CSV UPLOAD */
+    .csv-banner { display:flex; align-items:center; gap:10px; background:rgba(14,165,233,.08); border:1px solid rgba(14,165,233,.25); border-radius:8px; padding:9px 14px; margin-bottom:16px; font-size:12px; font-weight:500; color:var(--accent); }
+    .csv-banner i { flex-shrink:0; }
+    .csv-banner span { flex:1; }
+
     /* HEATMAP */
     .heatmap-wrap { padding: 20px; overflow-x: auto; }
     .heatmap-table { border-collapse: collapse; width: 100%; }
@@ -320,7 +332,6 @@
 <header class="topnav">
   <span class="topnav-title" id="navTitle"><i class="fa fa-crosshairs"></i>Product Radar</span>
   <span class="topnav-ts" id="refreshTs"></span>
-  <button class="btn btn-ghost btn-sm" onclick="doRefresh()"><i class="fa fa-refresh" id="refreshIcon"></i> Refresh</button>
   <button class="icon-btn" onclick="toggleTheme()" title="Toggle dark/light"><i class="fa fa-moon-o" id="themeIcon"></i></button>
 </header>
 
@@ -328,8 +339,15 @@
 <main class="main">
 
 <!-- ===== PAGE: RADAR ===== -->
+<input type="file" id="csvFileInput" accept=".csv,.tsv,.txt" style="display:none" onchange="handleCSVUpload(event)">
+
 <div class="page active" id="page-radar">
   <div class="alert" id="radarAlert"><i class="fa fa-info-circle"></i><span id="radarAlertText"></span></div>
+  <div class="csv-banner" id="csvModeBanner" style="display:none;">
+    <i class="fa fa-file-text-o"></i>
+    <span id="csvModeText">CSV loaded</span>
+    <button class="btn btn-ghost btn-sm" onclick="clearCSV()"><i class="fa fa-times"></i> Clear CSV</button>
+  </div>
 
   <div class="stats-grid" id="statsGrid" style="display:none;">
     <div class="stat-card"><div class="stat-icon ic-blue"><i class="fa fa-th"></i></div><div><div class="stat-num" id="st_total">0</div><div class="stat-lbl">Total Records</div></div></div>
@@ -341,7 +359,10 @@
   <div class="card">
     <div class="card-header">
       <span class="card-title"><i class="fa fa-search"></i>Search Merchant</span>
-      <span class="card-sub" id="dataLoadStatus">Loading…</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="card-sub" id="dataLoadStatus">Upload a CSV to get started</span>
+        <button class="btn btn-ghost btn-sm" onclick="$('#csvFileInput').click()" title="Upload merchant CSV"><i class="fa fa-upload"></i> Upload CSV</button>
+      </div>
     </div>
     <div class="card-body">
       <div class="search-row">
@@ -349,7 +370,7 @@
         <button class="btn btn-primary" onclick="runSearch()"><i class="fa fa-search"></i> Search</button>
         <button class="btn btn-ghost" onclick="clearAll()"><i class="fa fa-times"></i> Clear</button>
       </div>
-      <div class="search-hint"><i class="fa fa-info-circle"></i>&nbsp;Press <strong>Enter</strong> to search · Covers Checkout &amp; Payment features across all merchants</div>
+      <div class="search-hint" id="searchHint"><i class="fa fa-info-circle"></i>&nbsp;Upload a CSV first, then search by merchant name or MID</div>
     </div>
   </div>
 
@@ -381,7 +402,7 @@
         <input type="text" class="prod-filter" id="productFilter" placeholder="Filter by feature…" oninput="applyProductFilter()">
       </div>
 
-      <div class="loader" id="loader"><div class="spinner"></div><p>Fetching from Metabase…</p></div>
+      <div class="loader" id="loader"><div class="spinner"></div><p>Loading…</p></div>
 
       <div class="empty" id="emptyState">
         <div class="empty-icon"><i class="fa fa-search"></i></div>
@@ -418,14 +439,46 @@
   <div class="section-header">
     <div>
       <div class="section-title">Merchant Analytics</div>
-      <div class="section-sub">Deep-dive into a specific merchant or view portfolio-wide heatmap</div>
+      <div class="section-sub">Portfolio overview + deep-dive per merchant · upload a CSV to populate</div>
+    </div>
+  </div>
+
+  <!-- Portfolio Overview (shown when CSV loaded) -->
+  <div id="portfolioOverview" style="display:none;">
+    <div class="stats-grid" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="stat-icon ic-blue"><i class="fa fa-users"></i></div><div><div class="stat-num" id="pov_merchants">—</div><div class="stat-lbl">Total Merchants</div></div></div>
+      <div class="stat-card"><div class="stat-icon ic-purple"><i class="fa fa-th-large"></i></div><div><div class="stat-num" id="pov_products">—</div><div class="stat-lbl">Products Tracked</div></div></div>
+      <div class="stat-card"><div class="stat-icon ic-green"><i class="fa fa-check-circle"></i></div><div><div class="stat-num" id="pov_adoption">—</div><div class="stat-lbl">Overall Adoption</div></div></div>
+      <div class="stat-card"><div class="stat-icon ic-orange"><i class="fa fa-bar-chart"></i></div><div><div class="stat-num" id="pov_avg">—</div><div class="stat-lbl">Avg Features / Merchant</div></div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa fa-pie-chart"></i>Segment Distribution</span>
+          <span class="card-sub" id="segChartSub"></span>
+        </div>
+        <div class="card-body" style="height:220px;position:relative;">
+          <canvas id="segmentChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa fa-signal"></i>Product Penetration</span>
+          <span class="card-sub">% of merchants with each product active</span>
+        </div>
+        <div id="penetrationWrap" style="padding:0 20px 16px;overflow-y:auto;max-height:260px;">
+          <canvas id="penetrationChart"></canvas>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- Merchant lookup -->
   <div class="card">
     <div class="card-header">
-      <span class="card-title"><i class="fa fa-user-circle"></i>Merchant Lookup</span>
+      <span class="card-title"><i class="fa fa-user-circle"></i>Merchant Deep-Dive</span>
+      <span class="card-sub">Search a merchant to see their full product analysis</span>
     </div>
     <div class="card-body">
       <div class="search-row">
@@ -436,30 +489,62 @@
     </div>
   </div>
 
-  <!-- Merchant KPIs (hidden until search) -->
+  <!-- Merchant deep-dive (hidden until search) -->
   <div id="analyticsContent" style="display:none;">
-    <div class="kpi-grid">
-      <div class="kpi-card"><div class="kpi-label">Merchant</div><div class="kpi-value" id="akpi_name" style="font-size:16px;font-weight:700;">—</div><div class="kpi-sub" id="akpi_mid">MID: —</div></div>
-      <div class="kpi-card"><div class="kpi-label">Active Features</div><div class="kpi-value" id="akpi_active">—</div><div class="kpi-sub" id="akpi_active_pct">of total features</div></div>
-      <div class="kpi-card"><div class="kpi-label">Core Products Active</div><div class="kpi-value" id="akpi_products">—</div><div class="kpi-sub">of 9 core products</div></div>
+    <!-- 4-tile KPI row -->
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
+      <div class="stat-card" style="flex-direction:column;align-items:flex-start;gap:4px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);">Merchant</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text);" id="akpi_name">—</div>
+        <div style="font-size:11px;color:var(--text-2);" id="akpi_mid">MID: —</div>
+      </div>
+      <div class="stat-card"><div class="stat-icon ic-green"><i class="fa fa-check-circle"></i></div><div><div class="stat-num" id="akpi_active">—</div><div class="stat-lbl" id="akpi_active_pct">Active Features</div></div></div>
+      <div class="stat-card"><div class="stat-icon ic-purple"><i class="fa fa-th-large"></i></div><div><div class="stat-num" id="akpi_products">—</div><div class="stat-lbl">Core Products / 9</div></div></div>
+      <div class="stat-card"><div class="stat-icon ic-orange"><i class="fa fa-trophy"></i></div><div><div class="stat-num" id="akpi_rank">—</div><div class="stat-lbl" id="akpi_rank_sub">Segment Rank</div></div></div>
     </div>
 
     <!-- Core product status grid -->
     <div class="card">
-      <div class="card-header"><span class="card-title"><i class="fa fa-th-large"></i>Core Product Status</span></div>
+      <div class="card-header">
+        <span class="card-title"><i class="fa fa-th-large"></i>Core Product Status</span>
+        <span class="card-sub" id="coreStatusSub"></span>
+      </div>
       <div class="product-status-grid" id="analyticsProductGrid"></div>
     </div>
 
+    <!-- Feature breakdown + Upsell opportunities -->
     <div class="two-col">
-      <!-- Feature chart -->
       <div class="card">
-        <div class="card-header"><span class="card-title"><i class="fa fa-bar-chart"></i>Feature Breakdown</span></div>
-        <div class="card-body" style="height:240px;position:relative;">
+        <div class="card-header"><span class="card-title"><i class="fa fa-bar-chart"></i>Feature Breakdown by Product</span></div>
+        <div class="card-body" style="height:260px;position:relative;">
           <canvas id="featureChart"></canvas>
         </div>
       </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa fa-arrow-circle-up"></i>Upsell Opportunities</span>
+          <span class="card-sub" id="upsellSub">—</span>
+        </div>
+        <div class="table-scroll" style="max-height:260px;">
+          <table class="data-table">
+            <thead><tr><th>Product / Feature</th><th>Segment Adoption</th><th></th></tr></thead>
+            <tbody id="upsellBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
-      <!-- AI Chat -->
+    <!-- Peer comparison + AI chat -->
+    <div class="two-col">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa fa-users"></i>vs Segment Peers</span>
+          <span class="card-sub" id="peerSub">Core product enablement vs segment average</span>
+        </div>
+        <div class="card-body" style="height:260px;position:relative;">
+          <canvas id="peerChart"></canvas>
+        </div>
+      </div>
       <div class="card">
         <div class="card-header">
           <span class="card-title"><i class="fa fa-commenting"></i>AI Insights</span>
@@ -481,13 +566,61 @@
     </div>
   </div>
 
+  <!-- Portfolio Filters -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i class="fa fa-filter"></i>Portfolio Filters</span>
+      <span class="card-sub" id="pfCount">Select filters to browse data</span>
+    </div>
+    <div class="pf-row">
+      <div class="pf-col">
+        <div class="pf-label">Merchant ID</div>
+        <select class="pf-select" id="pf_mid" onchange="applyPortfolioFilters()"><option value="">All</option></select>
+      </div>
+      <div class="pf-col" style="min-width:200px;">
+        <div class="pf-label">Merchant Name</div>
+        <select class="pf-select" id="pf_name" onchange="applyPortfolioFilters()"><option value="">All</option></select>
+      </div>
+      <div class="pf-col">
+        <div class="pf-label">Merchant Segment</div>
+        <select class="pf-select" id="pf_seg" onchange="applyPortfolioFilters()"><option value="">All</option></select>
+      </div>
+      <div class="pf-col" style="min-width:200px;">
+        <div class="pf-label">Product Name</div>
+        <select class="pf-select" id="pf_prod" onchange="applyPortfolioFilters()"><option value="">All</option></select>
+      </div>
+      <div class="pf-col">
+        <div class="pf-label">Product Status</div>
+        <select class="pf-select" id="pf_status" onchange="applyPortfolioFilters()">
+          <option value="">All</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+      <div class="pf-col" style="justify-content:flex-end;">
+        <button class="btn btn-ghost btn-sm" onclick="resetPortfolioFilters()"><i class="fa fa-times"></i> Reset</button>
+      </div>
+    </div>
+    <div class="table-scroll" id="pfTableWrap" style="display:none; max-height:420px;">
+      <table class="data-table" id="pfTable">
+        <thead><tr><th>MID</th><th>Merchant Name</th><th>Segment</th><th>Product</th><th>Status</th></tr></thead>
+        <tbody id="pfTableBody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="pfEmpty" style="display:none;">
+      <div class="empty-icon"><i class="fa fa-filter"></i></div>
+      <h3>No results match filters</h3>
+      <p>Try adjusting the dropdowns above or upload a CSV for full portfolio data.</p>
+    </div>
+  </div>
+
   <!-- Global Adoption Heatmap (always visible) -->
   <div class="card">
     <div class="card-header">
       <span class="card-title"><i class="fa fa-th"></i>Global Product Adoption Heatmap</span>
-      <span class="card-sub" id="heatmapSub">Loading…</span>
+      <span class="card-sub" id="heatmapSub">Upload a CSV to view heatmap</span>
     </div>
-    <div class="loader" id="heatmapLoader"><div class="spinner"></div><p>Loading heatmap…</p></div>
+    <div class="loader" id="heatmapLoader" style="display:none;"><div class="spinner"></div><p>Loading heatmap…</p></div>
     <div class="heatmap-wrap" id="heatmapWrap" style="display:none;">
       <table class="heatmap-table" id="heatmapTable"></table>
     </div>
@@ -550,15 +683,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
 <script>
 /* ================================================================
-   CONFIG — read from config.js (window.GK_CONFIG)
+   CONFIG
 ================================================================ */
-// All config & API keys live server-side (.env). Browser uses proxy endpoints only.
-
-const CARD_CHECKOUT = 5824;
-const CARD_PAYMENT  = 5823;
-const CARD_HEATMAP  = 5666;
-
-const META_COLS = new Set(['MERCHANT ID', 'MERCHANT NAME', 'CATEGORY']);
 
 /* ================================================================
    FEATURE → CORE PRODUCT MAPPING (keyword-based)
@@ -623,30 +749,29 @@ const CORE_PRODUCTS = [
 /* ================================================================
    STATE
 ================================================================ */
-let rawCheckout   = null;
-let rawPayment    = null;
+let csvRows       = null;   // non-null = data loaded
 let allRows       = [];
 let filteredRows  = [];
 let sortState     = { col: null, dir: 'asc' };
 let currentFilter = 'all';
 let currentRadarTab = 'core';
 
-let heatmapData   = null;
 let allMerchants  = [];
 let filteredMerchants = [];
 let merchantSortState = { col: 'activeProducts', dir: 'desc' };
 let segFilter = 'all';
 
-let featureChart  = null;
-let chatContext   = null; // { mid, name, rows }
+let featureChart      = null;
+let segmentChartInst  = null;
+let penetrationChartInst = null;
+let peerChartInst     = null;
+let chatContext       = null; // { mid, name, rows }
 
 /* ================================================================
    INIT
 ================================================================ */
 document.addEventListener('DOMContentLoaded', () => {
   applyStoredTheme();
-  loadAllData();
-  loadHeatmap();
 });
 
 /* ================================================================
@@ -661,7 +786,7 @@ function navTo(page, el) {
   $(el).addClass('active');
   $('#navTitle').html(PAGE_TITLES[page]);
 
-  if (page === 'merchants' && allMerchants.length === 0 && rawCheckout) buildMerchantsTable();
+  if (page === 'merchants' && allMerchants.length === 0 && csvRows) buildMerchantsTable();
 }
 
 /* ================================================================
@@ -677,69 +802,6 @@ function toggleTheme() {
   setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
 }
 
-/* ================================================================
-   DATA LOAD
-================================================================ */
-async function loadAllData(forceRefresh = false) {
-  showLoader();
-  $('#dataLoadStatus').text('Loading merchant data…');
-  try {
-    const [co, py] = await Promise.all([fetchCard(CARD_CHECKOUT, forceRefresh), fetchCard(CARD_PAYMENT, forceRefresh)]);
-    rawCheckout = co;
-    rawPayment  = py;
-    const total = new Set([...co, ...py].map(r => r['MERCHANT ID'])).size;
-    $('#dataLoadStatus').text(`${total} merchants ready · search by name or MID`);
-    hideLoader();
-    showEmpty();
-    hideAlert('radarAlert');
-  } catch (err) {
-    hideLoader();
-    showEmpty('Failed to load data');
-    showAlert('radarAlert', `Connection failed: ${err.message}`, 'error');
-  }
-}
-
-async function fetchCard(cardId, forceRefresh = false) {
-  // constraints: null tells Metabase to remove the display row-limit cap.
-  // ?nocache=1 on manual refresh bypasses the server-side in-memory cache.
-  const qs = forceRefresh ? '?nocache=1' : '';
-  const result = await mbFetch(`/api/card/${cardId}/query${qs}`, {
-    method: 'POST',
-    body: JSON.stringify({ constraints: null }),
-  });
-  if (result.error) throw new Error(result.error);
-  const cols = (result.data?.cols || []).map(c => c.name);
-  return (result.data?.rows || []).map(row => {
-    const obj = {};
-    cols.forEach((col, i) => { obj[col] = row[i]; });
-    return obj;
-  });
-}
-
-function unpivot(wideRow, source) {
-  return Object.entries(wideRow)
-    .filter(([k]) => !META_COLS.has(k))
-    .map(([feature, val]) => ({
-      merchant_id:   String(wideRow['MERCHANT ID'] ?? ''),
-      merchant_name: String(wideRow['MERCHANT NAME'] ?? ''),
-      category:      String(wideRow['CATEGORY'] ?? ''),
-      product:       feature,
-      is_active:     val === 1 || val === true,
-      ds:            source
-    }));
-}
-
-/* ================================================================
-   METABASE API  (proxied through /metabase/* — no key in browser)
-================================================================ */
-async function mbFetch(path, opts = {}) {
-  const resp = await fetch('/metabase' + path, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }
-  });
-  if (!resp.ok) { const t = await resp.text(); throw new Error(`HTTP ${resp.status}: ${t.substring(0, 300)}`); }
-  return resp.json();
-}
 
 /* ================================================================
    RADAR: SEARCH
@@ -749,15 +811,11 @@ function handleKey(e) { if (e.key === 'Enter') runSearch(); }
 function runSearch() {
   const raw = $('#searchInput').val().trim();
   if (!raw) { showAlert('radarAlert', 'Enter a merchant name or MID.', 'error'); return; }
-  if (!rawCheckout) { showAlert('radarAlert', 'Data still loading, please wait…', 'info'); return; }
+  if (!csvRows) { showAlert('radarAlert', 'Upload a CSV first.', 'info'); return; }
 
   const isMid = /^\d+$/.test(raw);
   const term  = raw.toLowerCase();
-
-  const matchCo = rawCheckout.filter(r => isMid ? String(r['MERCHANT ID']) === raw : (r['MERCHANT NAME'] || '').toLowerCase().includes(term));
-  const matchPy = rawPayment.filter(r => isMid ? String(r['MERCHANT ID']) === raw : (r['MERCHANT NAME'] || '').toLowerCase().includes(term));
-
-  const rows = [...matchCo.flatMap(r => unpivot(r, 'Checkout')), ...matchPy.flatMap(r => unpivot(r, 'Payment'))];
+  const rows  = csvRows.filter(r => isMid ? String(r.merchant_id) === raw : (r.merchant_name || '').toLowerCase().includes(term));
 
   currentFilter = 'all';
   resetPills();
@@ -789,13 +847,6 @@ function runSearch() {
   }
 }
 
-async function doRefresh() {
-  $('#refreshIcon').addClass('fa-spin');
-  rawCheckout = null; rawPayment = null;
-  await loadAllData(true);  // true = bypass server cache, fetch live data
-  if ($('#searchInput').val().trim()) runSearch();
-  $('#refreshIcon').removeClass('fa-spin');
-}
 
 /* ================================================================
    RADAR TABS
@@ -1012,13 +1063,11 @@ function clearAll() {
 function analyticsFetch() {
   const raw = $('#analyticsSearch').val().trim();
   if (!raw) return;
-  if (!rawCheckout) { showAlert('analyticsAlert', 'Data still loading…', 'info'); return; }
+  if (!csvRows) { showAlert('analyticsAlert', 'Upload a CSV first.', 'info'); return; }
 
   const isMid = /^\d+$/.test(raw);
   const term  = raw.toLowerCase();
-  const matchCo = rawCheckout.filter(r => isMid ? String(r['MERCHANT ID']) === raw : (r['MERCHANT NAME']||'').toLowerCase().includes(term));
-  const matchPy = rawPayment.filter(r => isMid ? String(r['MERCHANT ID']) === raw : (r['MERCHANT NAME']||'').toLowerCase().includes(term));
-  const rows = [...matchCo.flatMap(r => unpivot(r, 'Checkout')), ...matchPy.flatMap(r => unpivot(r, 'Payment'))];
+  const rows  = csvRows.filter(r => isMid ? String(r.merchant_id) === raw : (r.merchant_name || '').toLowerCase().includes(term));
 
   if (rows.length === 0) { showAlert('analyticsAlert', `No data for "${raw}".`, 'error'); return; }
   hideAlert('analyticsAlert');
@@ -1028,16 +1077,30 @@ function analyticsFetch() {
   const total  = rows.length;
   const pct    = Math.round((active / total) * 100);
 
-  const products = computeCoreProducts(rows);
+  const products    = computeCoreProducts(rows);
   const activeProds = products.filter(p => p.status === 'enabled').length;
+  const segment     = first.category || '';
 
+  // KPI tiles
   $('#akpi_name').text(first.merchant_name);
-  $('#akpi_mid').text(`MID: ${first.merchant_id} · ${first.category}`);
+  $('#akpi_mid').text(`MID: ${first.merchant_id} · ${segment}`);
   $('#akpi_active').text(active);
   $('#akpi_active_pct').text(`${pct}% of ${total} features`);
   $('#akpi_products').text(activeProds);
 
-  // Product status grid
+  // Segment rank (percentile by active feature count among segment peers)
+  if (csvRows) {
+    const segMids = [...new Set(csvRows.filter(r => r.category === segment).map(r => r.merchant_id))];
+    const segCounts = segMids.map(mid => csvRows.filter(r => r.merchant_id === mid && r.is_active).length).sort((a,b) => a-b);
+    const rank = segCounts.filter(c => c <= active).length;
+    const rankPct = segCounts.length > 0 ? Math.round(rank / segCounts.length * 100) : 0;
+    const top = 100 - rankPct;
+    $('#akpi_rank').text(`Top ${top}%`);
+    $('#akpi_rank_sub').text(`of ${segMids.length} ${segment} merchants`);
+  }
+
+  // Core product status grid
+  $('#coreStatusSub').text(`${activeProds} of 9 active`);
   const grid = $('#analyticsProductGrid').empty();
   products.forEach(p => {
     const on = p.status === 'enabled';
@@ -1045,45 +1108,44 @@ function analyticsFetch() {
     grid.append(`
       <div class="ps-item ${uk ? '' : on ? 'ps-item-on' : 'ps-item-off'}">
         <span class="ps-item-name">${p.name}</span>
-        <span class="badge ${uk ? 'b-unknown' : on ? 'b-active' : 'b-inactive'}">${uk ? '—' : on ? 'Active' : 'Inactive'}</span>
+        <span class="badge ${uk ? '' : on ? 'b-active' : 'b-inactive'}" style="${uk ? 'background:var(--filter-bg);color:var(--text-2);border:1px solid var(--border)' : ''}">${uk ? '—' : on ? 'Active' : 'Inactive'}</span>
       </div>
     `);
   });
 
-  // Feature chart
-  const bySource = {};
-  rows.forEach(r => {
-    if (!bySource[r.ds]) bySource[r.ds] = { active: 0, inactive: 0 };
-    if (r.is_active) bySource[r.ds].active++;
-    else bySource[r.ds].inactive++;
+  // Feature breakdown by core product (active vs inactive features per product)
+  const cpLabels = [], cpActive = [], cpInactive = [];
+  products.forEach(p => {
+    if (p.totalCount === 0) return;
+    cpLabels.push(p.name);
+    cpActive.push(p.activeCount);
+    cpInactive.push(p.totalCount - p.activeCount);
   });
-  const labels  = Object.keys(bySource);
-  const actData = labels.map(l => bySource[l].active);
-  const inaData = labels.map(l => bySource[l].inactive);
-
   if (featureChart) featureChart.destroy();
-  const ctx = document.getElementById('featureChart').getContext('2d');
-  featureChart = new Chart(ctx, {
+  featureChart = new Chart(document.getElementById('featureChart').getContext('2d'), {
     type: 'bar',
     data: {
-      labels,
+      labels: cpLabels,
       datasets: [
-        { label: 'Active', data: actData, backgroundColor: 'rgba(16,185,129,.75)', borderRadius: 5 },
-        { label: 'Inactive', data: inaData, backgroundColor: 'rgba(239,68,68,.6)', borderRadius: 5 }
+        { label: 'Active',   data: cpActive,   backgroundColor: 'rgba(16,185,129,.75)', borderRadius: 4 },
+        { label: 'Inactive', data: cpInactive, backgroundColor: 'rgba(239,68,68,.55)',  borderRadius: 4 }
       ]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } },
       scales: {
-        x: { stacked: false, grid: { display: false } },
-        y: { beginAtZero: true, ticks: { stepSize: 1 } }
+        x: { stacked: true, ticks: { font: { size: 9 } }, grid: { display: false } },
+        y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } }
       }
     }
   });
 
-  chatContext = { mid: first.merchant_id, name: first.merchant_name, rows, products };
+  // Upsell opportunities + peer comparison
+  buildUpsellTable(rows, segment);
+  buildSegmentComparison(rows, segment);
+
+  chatContext = { mid: first.merchant_id, name: first.merchant_name, rows, products, segment };
   updateSideCard(rows);
   $('#analyticsContent').show();
 }
@@ -1091,7 +1153,8 @@ function analyticsFetch() {
 function analyticsClear() {
   $('#analyticsSearch').val('');
   $('#analyticsContent').hide();
-  if (featureChart) { featureChart.destroy(); featureChart = null; }
+  if (featureChart)    { featureChart.destroy();    featureChart    = null; }
+  if (peerChartInst)   { peerChartInst.destroy();   peerChartInst   = null; }
   chatContext = null;
   hideAlert('analyticsAlert');
 }
@@ -1099,19 +1162,6 @@ function analyticsClear() {
 /* ================================================================
    HEATMAP
 ================================================================ */
-async function loadHeatmap() {
-  $('#heatmapLoader').addClass('show');
-  try {
-    heatmapData = await fetchCard(CARD_HEATMAP);
-    renderHeatmap(heatmapData);
-    $('#heatmapSub').text(`${heatmapData.length} data points`);
-  } catch (err) {
-    $('#heatmapLoader').removeClass('show');
-    $('#heatmapSub').text('Failed to load');
-    $('#heatmapWrap').html(`<div class="empty"><div class="empty-icon"><i class="fa fa-exclamation-triangle"></i></div><h3>Heatmap unavailable</h3><p>${escHtml(err.message)}</p></div>`).show();
-  }
-}
-
 function renderHeatmap(data) {
   $('#heatmapLoader').removeClass('show');
   if (!data || data.length === 0) return;
@@ -1222,33 +1272,16 @@ function updateLastChat(text) {
    MERCHANTS PAGE
 ================================================================ */
 function buildMerchantsTable() {
-  if (!rawCheckout || !rawPayment) return;
-
+  if (!csvRows) return;
   const midMap = {};
-  [...rawCheckout, ...rawPayment].forEach(wideRow => {
-    const mid  = String(wideRow['MERCHANT ID'] ?? '');
-    const name = String(wideRow['MERCHANT NAME'] ?? '');
-    const cat  = String(wideRow['CATEGORY'] ?? '');
-    if (!midMap[mid]) midMap[mid] = { id: mid, name, category: cat, checkoutRow: null, paymentRow: null };
+  csvRows.forEach(r => {
+    if (!midMap[r.merchant_id]) midMap[r.merchant_id] = { id: r.merchant_id, name: r.merchant_name, category: r.category, rows: [] };
+    midMap[r.merchant_id].rows.push(r);
   });
-  rawCheckout.forEach(r => { const mid = String(r['MERCHANT ID']); if (midMap[mid]) midMap[mid].checkoutRow = r; });
-  rawPayment.forEach(r => { const mid = String(r['MERCHANT ID']); if (midMap[mid]) midMap[mid].paymentRow = r; });
-
   allMerchants = Object.values(midMap).map(m => {
-    const rows = [
-      ...(m.checkoutRow ? unpivot(m.checkoutRow, 'Checkout') : []),
-      ...(m.paymentRow  ? unpivot(m.paymentRow,  'Payment')  : [])
-    ];
-    const products = computeCoreProducts(rows);
-    return {
-      ...m,
-      activeFeatures:  rows.filter(r => r.is_active).length,
-      totalFeatures:   rows.length,
-      activeProducts:  products.filter(p => p.status === 'enabled').length,
-      products
-    };
+    const products = computeCoreProducts(m.rows);
+    return { ...m, activeFeatures: m.rows.filter(r => r.is_active).length, totalFeatures: m.rows.length, activeProducts: products.filter(p => p.status === 'enabled').length, products };
   });
-
   $('#merchantsCount').text(`${allMerchants.length} merchants in portfolio`);
   filteredMerchants = [...allMerchants];
   sortAndRenderMerchants();
@@ -1392,20 +1425,359 @@ function highlight(text, term) {
 }
 
 /* ================================================================
+   CSV UPLOAD
+================================================================ */
+function handleCSVUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const rows = parseCSV(e.target.result);
+      if (!rows.length) { showAlert('radarAlert', 'CSV has no data rows — check format.', 'error'); return; }
+      loadFromCSV(rows, file.name);
+    } catch (err) {
+      showAlert('radarAlert', 'CSV parse error: ' + err.message, 'error');
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function parseCSV(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+  if (lines.length < 2) throw new Error('File has no data rows');
+  const delim = lines[0].includes('\t') ? '\t' : ',';
+  const hdrs  = lines[0].split(delim).map(h => h.trim().replace(/^["']|["']$/g, '').toUpperCase());
+  const idx   = n => { const i = hdrs.indexOf(n); return i >= 0 ? i : null; };
+  const iMid = idx('MERCHANT ID'), iName = idx('MERCHANT NAME'), iCat = idx('CATEGORY'),
+        iProd = idx('PRODUCT'),    iStat = idx('MERCHANT PRODUCT STATUS');
+  if (iMid === null || iProd === null || iStat === null)
+    throw new Error('Required columns missing: MERCHANT ID, PRODUCT, MERCHANT PRODUCT STATUS');
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const p = lines[i].split(delim).map(v => v.trim().replace(/^["']|["']$/g, ''));
+    if (p.length < 3) continue;
+    const s = (p[iStat] || '').toLowerCase();
+    rows.push({
+      merchant_id:   String(p[iMid]  ?? ''),
+      merchant_name: String(iName !== null ? (p[iName] ?? '') : ''),
+      category:      String(iCat  !== null ? (p[iCat]  ?? '') : ''),
+      product:       String(p[iProd] ?? ''),
+      is_active:     s === '1' || s === 'true' || s === 'yes' || s === 'active',
+      ds: 'CSV'
+    });
+  }
+  return rows;
+}
+
+function loadFromCSV(rows, fileName) {
+  csvRows = rows;
+  const merchants = new Set(rows.map(r => r.merchant_id)).size;
+  const products  = new Set(rows.map(r => r.product)).size;
+  $('#dataLoadStatus').text(merchants.toLocaleString() + ' merchants · ' + products + ' products (CSV)');
+  $('#csvModeText').text((fileName || 'Uploaded CSV') + ' · ' + merchants.toLocaleString() + ' merchants loaded');
+  $('#csvModeBanner').show();
+  $('#searchHint').html('<i class="fa fa-file-text-o"></i>&nbsp;Searching uploaded CSV · ' + merchants.toLocaleString() + ' merchants');
+  hideAlert('radarAlert');
+  hideLoader();
+  showEmpty();
+  buildHeatmapFromCSV();
+  buildPortfolioOverview();
+  populatePortfolioFilters();
+  allMerchants = []; filteredMerchants = [];
+  buildMerchantsTable();
+  if ($('#searchInput').val().trim()) runSearch();
+  showAlert('radarAlert', 'CSV loaded: ' + merchants.toLocaleString() + ' merchants · ' + products + ' products.', 'info', 4000);
+}
+
+function clearCSV() {
+  csvRows = null;
+  $('#csvModeBanner').hide();
+  $('#pfTableWrap, #pfEmpty').hide();
+  $('#pfCount').text('Select filters to browse data');
+  $('#searchHint').html('<i class="fa fa-info-circle"></i>&nbsp;Upload a CSV to search merchants');
+  $('#dataLoadStatus').text('Upload a CSV to get started');
+  $('#heatmapSub').text('Upload a CSV to view heatmap');
+  $('#heatmapWrap').hide();
+  $('#portfolioOverview').hide();
+  if (segmentChartInst)     { segmentChartInst.destroy();     segmentChartInst     = null; }
+  if (penetrationChartInst) { penetrationChartInst.destroy(); penetrationChartInst = null; }
+  clearAll();
+  allMerchants = []; filteredMerchants = [];
+  renderMerchantsTable();
+}
+
+function buildHeatmapFromCSV() {
+  if (!csvRows || !csvRows.length) return;
+  const counts = {};
+  csvRows.forEach(r => {
+    const k = r.product + '||' + r.category;
+    if (!counts[k]) counts[k] = { e: 0, t: 0 };
+    counts[k].t++;
+    if (r.is_active) counts[k].e++;
+  });
+  const data = Object.entries(counts).map(([k, v]) => {
+    const [product, segment] = k.split('||');
+    return { PRODUCT: product, SEGMENT: segment, 'ENABLED %': v.t > 0 ? (v.e / v.t) * 100 : 0 };
+  });
+  renderHeatmap(data);
+  $('#heatmapSub').text(new Set(data.map(r => r.PRODUCT)).size + ' products × ' + new Set(data.map(r => r.SEGMENT)).size + ' segments (CSV)');
+  $('#heatmapLoader').removeClass('show');
+}
+
+/* ================================================================
+   PORTFOLIO OVERVIEW  (built from CSV on load)
+================================================================ */
+function buildPortfolioOverview() {
+  if (!csvRows || !csvRows.length) return;
+
+  const allMids  = [...new Set(csvRows.map(r => r.merchant_id))];
+  const total    = allMids.length;
+  const prods    = new Set(csvRows.map(r => r.product)).size;
+  const avgFeat  = (csvRows.length / total).toFixed(1);
+  const adoptPct = Math.round(csvRows.filter(r => r.is_active).length / csvRows.length * 100);
+
+  $('#pov_merchants').text(total.toLocaleString());
+  $('#pov_products').text(prods);
+  $('#pov_adoption').text(adoptPct + '%');
+  $('#pov_avg').text(avgFeat);
+
+  // Segment distribution donut
+  const segMap = {};
+  allMids.forEach(mid => {
+    const seg = (csvRows.find(r => r.merchant_id === mid) || {}).category || 'Unknown';
+    segMap[seg] = (segMap[seg] || 0) + 1;
+  });
+  const segLabels = Object.keys(segMap).sort();
+  const segColors = ['#0EA5E9','#10B981','#8B5CF6','#F59E0B','#EF4444','#3B82F6','#EC4899'];
+  if (segmentChartInst) segmentChartInst.destroy();
+  segmentChartInst = new Chart(document.getElementById('segmentChart').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: segLabels,
+      datasets: [{ data: segLabels.map(s => segMap[s]), backgroundColor: segColors.slice(0, segLabels.length), borderWidth: 2, borderColor: getComputedStyle(document.documentElement).getPropertyValue('--bg-card') }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'right', labels: { font: { size: 11 }, padding: 8,
+        generateLabels: chart => chart.data.labels.map((l,i) => ({
+          text: `${l}  ${segMap[l]}`, fillStyle: segColors[i] || '#999',
+          strokeStyle: 'transparent', hidden: false, index: i
+        }))
+      } } }
+    }
+  });
+  $('#segChartSub').text(`${segLabels.length} segments · ${total} merchants`);
+
+  // Product penetration horizontal bar
+  const prodMap = {};
+  csvRows.forEach(r => {
+    if (!prodMap[r.product]) prodMap[r.product] = { a: new Set(), t: new Set() };
+    prodMap[r.product].t.add(r.merchant_id);
+    if (r.is_active) prodMap[r.product].a.add(r.merchant_id);
+  });
+  const penetList = Object.entries(prodMap)
+    .map(([p, d]) => ({ product: p, pct: d.t.size > 0 ? Math.round(d.a.size / d.t.size * 100) : 0, count: d.a.size }))
+    .sort((a, b) => b.pct - a.pct)
+    .slice(0, 20);
+
+  const penetCanvas = document.getElementById('penetrationChart');
+  penetCanvas.parentElement.style.height = Math.max(160, penetList.length * 26 + 30) + 'px';
+  if (penetrationChartInst) penetrationChartInst.destroy();
+  penetrationChartInst = new Chart(penetCanvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: penetList.map(p => p.product),
+      datasets: [{
+        data: penetList.map(p => p.pct),
+        backgroundColor: penetList.map(p => p.pct >= 60 ? 'rgba(16,185,129,.75)' : p.pct >= 30 ? 'rgba(245,158,11,.75)' : 'rgba(239,68,68,.6)'),
+        borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw}%  (${penetList[ctx.dataIndex].count} merchants)` } } },
+      scales: {
+        x: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+
+  $('#portfolioOverview').show();
+}
+
+/* ================================================================
+   UPSELL OPPORTUNITIES  (per searched merchant)
+================================================================ */
+function buildUpsellTable(merchantRows, segment) {
+  const merchantProds = {};
+  merchantRows.forEach(r => { merchantProds[r.product] = r.is_active; });
+
+  const segRows = (segment && csvRows)
+    ? csvRows.filter(r => r.category === segment)
+    : (csvRows || []);
+
+  const prodMap = {};
+  segRows.forEach(r => {
+    if (!prodMap[r.product]) prodMap[r.product] = { a: new Set(), t: new Set() };
+    prodMap[r.product].t.add(r.merchant_id);
+    if (r.is_active) prodMap[r.product].a.add(r.merchant_id);
+  });
+
+  const upsells = Object.entries(prodMap)
+    .map(([prod, d]) => ({
+      product: prod,
+      segAdoption: d.t.size > 0 ? Math.round(d.a.size / d.t.size * 100) : 0,
+      merchantStatus: merchantProds.hasOwnProperty(prod) ? (merchantProds[prod] ? 'active' : 'inactive') : 'not_setup'
+    }))
+    .filter(u => u.merchantStatus !== 'active' && u.segAdoption > 0)
+    .sort((a, b) => b.segAdoption - a.segAdoption)
+    .slice(0, 12);
+
+  const tbody = $('#upsellBody').empty();
+  $('#upsellSub').text(upsells.length + ' opportunities in ' + (segment || 'portfolio'));
+
+  if (!upsells.length) {
+    tbody.append('<tr><td colspan="3" style="text-align:center;color:var(--text-2);padding:20px;font-size:12px;">All products active — great coverage!</td></tr>');
+    return;
+  }
+  upsells.forEach(u => {
+    const heat = u.segAdoption >= 60 ? 'var(--green)' : u.segAdoption >= 30 ? 'var(--orange)' : 'var(--text-2)';
+    const icon = u.segAdoption >= 60 ? '🔥' : u.segAdoption >= 30 ? '📈' : '💡';
+    const badge = u.merchantStatus === 'inactive'
+      ? '<span class="badge b-inactive">Inactive</span>'
+      : '<span style="font-size:10px;color:var(--text-2);">Not setup</span>';
+    tbody.append(`<tr>
+      <td style="font-weight:600;font-size:12px;">${escHtml(u.product)}<br><span style="font-size:10px;color:var(--text-2);">${badge}</span></td>
+      <td><span style="font-weight:700;color:${heat};font-size:14px;">${u.segAdoption}%</span><br><span style="font-size:10px;color:var(--text-2);">of ${escHtml(segment || 'all')} use this</span></td>
+      <td style="text-align:center;font-size:16px;">${icon}</td>
+    </tr>`);
+  });
+}
+
+/* ================================================================
+   SEGMENT PEER COMPARISON  (per searched merchant)
+================================================================ */
+function buildSegmentComparison(merchantRows, segment) {
+  const segRows = (segment && csvRows)
+    ? csvRows.filter(r => r.category === segment)
+    : (csvRows || []);
+  const segMids = [...new Set(segRows.map(r => r.merchant_id))];
+
+  const labels = [], mData = [], sData = [];
+  CORE_PRODUCTS.forEach(cp => {
+    const mProd = merchantRows.filter(r => featureMatchesProduct(r.product, cp));
+    if (mProd.length === 0) return;
+    const mPct = Math.round(mProd.filter(r => r.is_active).length / mProd.length * 100);
+
+    let sActive = 0;
+    segMids.forEach(mid => {
+      const mRows = segRows.filter(r => r.merchant_id === mid && featureMatchesProduct(r.product, cp));
+      if (mRows.some(r => r.is_active)) sActive++;
+    });
+    const sPct = segMids.length > 0 ? Math.round(sActive / segMids.length * 100) : 0;
+
+    labels.push(cp.name);
+    mData.push(mPct);
+    sData.push(sPct);
+  });
+
+  if (peerChartInst) peerChartInst.destroy();
+  $('#peerSub').text(`vs ${segMids.length} peers in ${segment || 'all segments'}`);
+
+  peerChartInst = new Chart(document.getElementById('peerChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'This Merchant', data: mData, backgroundColor: 'rgba(14,165,233,.8)', borderRadius: 4 },
+        { label: `${segment || 'All'} Avg`,  data: sData, backgroundColor: 'rgba(100,116,139,.45)', borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } },
+      scales: {
+        x: { ticks: { font: { size: 9 } }, grid: { display: false } },
+        y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%', font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+/* ================================================================
+   PORTFOLIO FILTERS
+================================================================ */
+function _srcRows() {
+  return csvRows || [];
+}
+
+function populatePortfolioFilters() {
+  const src = _srcRows();
+  if (!src.length) return;
+  const mids  = [...new Set(src.map(r => String(r.merchant_id  || '')))].filter(Boolean).sort((a,b) => +a - +b);
+  const names = [...new Set(src.map(r => String(r.merchant_name || '')))].filter(Boolean).sort();
+  const segs  = [...new Set(src.map(r => String(r.category      || '')))].filter(Boolean).sort();
+  const prods = [...new Set(src.map(r => String(r.product        || '')))].filter(Boolean).sort();
+  const fill  = (id, opts) => {
+    document.getElementById(id).innerHTML = '<option value="">All</option>' +
+      opts.map(o => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join('');
+  };
+  fill('pf_mid', mids); fill('pf_name', names); fill('pf_seg', segs); fill('pf_prod', prods);
+}
+
+function applyPortfolioFilters() {
+  const mid    = $('#pf_mid').val();
+  const name   = $('#pf_name').val();
+  const seg    = $('#pf_seg').val().toLowerCase();
+  const prod   = $('#pf_prod').val().toLowerCase();
+  const status = $('#pf_status').val();
+  if (!mid && !name && !seg && !prod && !status) {
+    $('#pfTableWrap, #pfEmpty').hide(); $('#pfCount').text('Select filters to browse data'); return;
+  }
+  const src  = _srcRows();
+  const rows = src.filter(r => {
+    if (mid    && String(r.merchant_id   || '') !== mid)                              return false;
+    if (name   && String(r.merchant_name || '') !== name)                             return false;
+    if (seg    && String(r.category      || '').toLowerCase() !== seg)                return false;
+    if (prod   && String(r.product        || '').toLowerCase() !== prod)               return false;
+    if (status === 'active'   && !r.is_active)                                        return false;
+    if (status === 'inactive' &&  r.is_active)                                        return false;
+    return true;
+  });
+  $('#pfCount').text(rows.length.toLocaleString() + ' rows');
+  const tbody = $('#pfTableBody').empty();
+  if (!rows.length) { $('#pfTableWrap').hide(); $('#pfEmpty').show(); return; }
+  $('#pfEmpty').hide();
+  rows.slice(0, 2000).forEach(r => {
+    tbody.append(`<tr>
+      <td class="td-mid">${escHtml(String(r.merchant_id || ''))}</td>
+      <td class="td-name">${escHtml(String(r.merchant_name || ''))}</td>
+      <td><span class="tag-cat ${getCatClass(r.category)}">${escHtml(r.category || '—')}</span></td>
+      <td>${escHtml(String(r.product || ''))}</td>
+      <td><span class="badge ${r.is_active ? 'b-active' : 'b-inactive'}">${r.is_active ? 'Active' : 'Inactive'}</span></td>
+    </tr>`);
+  });
+  if (rows.length > 2000) tbody.append(`<tr><td colspan="5" style="text-align:center;color:var(--text-2);padding:12px;font-size:11px;">Showing first 2,000 of ${rows.length.toLocaleString()} rows</td></tr>`);
+  $('#pfTableWrap').show();
+}
+
+function resetPortfolioFilters() {
+  ['pf_mid','pf_name','pf_seg','pf_prod','pf_status'].forEach(id => { document.getElementById(id).value = ''; });
+  $('#pfTableWrap, #pfEmpty').hide();
+  $('#pfCount').text('Select filters to browse data');
+}
+
+/* ================================================================
    MERCHANTS PAGE: lazy-build when page is first visited
 ================================================================ */
 const _origNavTo = navTo;
 window.navTo = function(page, el) {
   _origNavTo(page, el);
-  if (page === 'merchants' && allMerchants.length === 0) {
-    if (rawCheckout) buildMerchantsTable();
-    else {
-      $('#merchantsLoader').addClass('show');
-      const poll = setInterval(() => {
-        if (rawCheckout) { clearInterval(poll); buildMerchantsTable(); }
-      }, 500);
-    }
-  }
+  if (page === 'merchants' && allMerchants.length === 0 && csvRows) buildMerchantsTable();
+  if (page === 'analytics') populatePortfolioFilters();
 };
 </script>
 </body>
