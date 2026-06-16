@@ -12,6 +12,11 @@ import urllib.request
 import urllib.error
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+CSV_PATH  = os.path.join(DATA_DIR, 'latest.csv')
+META_PATH = os.path.join(DATA_DIR, 'latest.meta.json')
+os.makedirs(DATA_DIR, exist_ok=True)
+
 
 def _load_dotenv():
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
@@ -34,7 +39,7 @@ PORT = int(os.environ.get('PORT', 8080))
 
 BLOCKED = {
     '.env', '.env.example', '.git', '.gitignore',
-    'setup.sh', 'CLAUDE.md', 'DEPLOY.md',
+    'setup.sh', 'CLAUDE.md', 'DEPLOY.md', 'data',
 }
 
 
@@ -54,6 +59,10 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path in ('/', ''):
             self.path = '/merchant-product-radar.html'
 
+        if self.path == '/api/csv':
+            self._serve_csv()
+            return
+
         parts = [p for p in self.path.lstrip('/').split('/') if p]
         name = parts[0] if parts else ''
         if name in BLOCKED or name.startswith('.'):
@@ -61,6 +70,21 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         super().do_GET()
+
+    def _serve_csv(self):
+        if not os.path.exists(CSV_PATH):
+            self._json(404, {'error': 'no_csv'})
+            return
+        try:
+            with open(CSV_PATH, encoding='utf-8') as f:
+                csv_text = f.read()
+            meta = {}
+            if os.path.exists(META_PATH):
+                with open(META_PATH) as f:
+                    meta = json.load(f)
+            self._json(200, {'csv': csv_text, 'fileName': meta.get('fileName', 'latest.csv')})
+        except Exception as e:
+            self._json(500, {'error': str(e)})
 
     def do_HEAD(self):
         parts = [p for p in self.path.lstrip('/').split('/') if p]
@@ -70,7 +94,21 @@ class Handler(SimpleHTTPRequestHandler):
             return
         super().do_HEAD()
 
+    def do_DELETE(self):
+        if self.path != '/api/csv':
+            self.send_error(404)
+            return
+        for p in (CSV_PATH, META_PATH):
+            try:
+                os.remove(p)
+            except FileNotFoundError:
+                pass
+        self._json(200, {'ok': True})
+
     def do_POST(self):
+        if self.path == '/api/csv':
+            self._save_csv()
+            return
         if self.path != '/api/chat':
             self.send_error(404)
             return
@@ -109,6 +147,23 @@ class Handler(SimpleHTTPRequestHandler):
             err = e.read().decode()
             self._json(e.code, {'error': err})
 
+    def _save_csv(self):
+        length = int(self.headers.get('Content-Length', 0))
+        body   = json.loads(self.rfile.read(length))
+        csv_text  = body.get('csv', '')
+        file_name = body.get('fileName', 'latest.csv')
+        if not csv_text:
+            self._json(400, {'error': 'empty csv'})
+            return
+        try:
+            with open(CSV_PATH, 'w', encoding='utf-8') as f:
+                f.write(csv_text)
+            with open(META_PATH, 'w') as f:
+                json.dump({'fileName': file_name}, f)
+            self._json(200, {'ok': True})
+        except Exception as e:
+            self._json(500, {'error': str(e)})
+
     def _json(self, code, obj):
         body = json.dumps(obj).encode()
         self.send_response(code)
@@ -121,7 +176,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
 

@@ -772,6 +772,7 @@ let chatContext       = null; // { mid, name, rows }
 ================================================================ */
 document.addEventListener('DOMContentLoaded', () => {
   applyStoredTheme();
+  autoLoadCSV();
 });
 
 /* ================================================================
@@ -1432,16 +1433,39 @@ function handleCSVUpload(event) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
+    const rawText = e.target.result;
     try {
-      const rows = parseCSV(e.target.result);
+      const rows = parseCSV(rawText);
       if (!rows.length) { showAlert('radarAlert', 'CSV has no data rows — check format.', 'error'); return; }
       loadFromCSV(rows, file.name);
+      saveCSVToServer(rawText, file.name);
     } catch (err) {
       showAlert('radarAlert', 'CSV parse error: ' + err.message, 'error');
     }
     event.target.value = '';
   };
   reader.readAsText(file);
+}
+
+function saveCSVToServer(csvText, fileName) {
+  fetch('/api/csv', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csv: csvText, fileName: fileName })
+  }).catch(() => {});
+}
+
+function autoLoadCSV() {
+  fetch('/api/csv')
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data || !data.csv) return;
+      try {
+        const rows = parseCSV(data.csv);
+        if (rows.length) loadFromCSV(rows, data.fileName || 'latest.csv');
+      } catch (_) {}
+    })
+    .catch(() => {});
 }
 
 function parseCSV(text) {
@@ -1493,6 +1517,7 @@ function loadFromCSV(rows, fileName) {
 
 function clearCSV() {
   csvRows = null;
+  fetch('/api/csv', { method: 'DELETE' }).catch(() => {});
   $('#csvModeBanner').hide();
   $('#pfTableWrap, #pfEmpty').hide();
   $('#pfCount').text('Select filters to browse data');
